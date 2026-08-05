@@ -2,27 +2,29 @@
 
 **Multi-Agent Codebase Intelligence & PR Review Copilot**
 
-CodeSentry is an production-grade, agentic code review platform built with **LangGraph**. It points at any public GitHub repository, builds a high-fidelity semantic index of the full codebase (via AST-aware chunking), ingests commit history and past PR review discussions, and executes a multi-agent pipeline to review incoming Pull Requests with senior-engineer precision.
+CodeSentry is an active engineering initiative building a production-grade, agentic code review platform powered by **LangGraph**. Designed to point at any public GitHub repository, CodeSentry constructs a high-fidelity semantic index of the codebase using AST-aware chunking, ingests commit history and past PR review discussions, and executes a multi-agent pipeline to review incoming Pull Requests with senior-engineer precision.
 
-Unlike generic LLM diff summarizers that offer surface-level feedback, CodeSentry understands your codebase's unique architectural patterns, team conventions, and historical precedent—citing exact code references and past PR decisions for every claim it makes.
+Unlike generic LLM diff summarizers that provide shallow feedback, CodeSentry is designed to understand codebase-specific architectural patterns, team conventions, and historical precedent—citing exact code references for every claim.
+
+> 🚧 **Work in Progress**: This project is actively under development. Features, multi-agent graphs, and evaluation suites are being built according to our roadmap below.
 
 ---
 
-## 🌟 Key Features & Highlights
+## 🌟 Planned & Core Features
 
-- **AST-Aware Code Ingestion**: Splitting code along meaningful boundaries (functions, classes, interfaces using Tree-Sitter) rather than arbitrary line counts.
-- **Precedent-Aware Retrieval**: Combines hybrid RAG over the codebase with a historical memory of closed PR comments to reflect "how this team usually reviews code."
-- **Multi-Agent LangGraph Pipeline**: Specialized agents independently evaluate bug risks, structural conventions, and test coverage gaps.
-- **Strict Hallucination Guardrail (Critic Agent)**: Automatically verifies and drops any agent claim that cannot be anchored directly to an actual line in the retrieved codebase or PR diff.
-- **Live GitHub Webhook Integration**: Event-driven architecture using FastAPI to automatically post review comments directly onto live PRs in real time.
-- **Golden Evaluation Suite**: Evaluated against historical human-reviewed PRs using Ragas and custom metrics (precision/recall on bug flags).
-- **Full Observability & LLMOps**: End-to-end tracing, prompt versioning, and per-review cost tracking via Langfuse / LangSmith.
+- **AST-Aware Code Ingestion**: Chunking code along syntactic boundaries (functions, classes, interfaces via Tree-Sitter) rather than arbitrary line counts.
+- **Precedent-Aware Retrieval**: Hybrid RAG over codebase vectors (`pgvector`) combined with historical PR review comments.
+- **Multi-Agent LangGraph Pipeline**: Dedicated agents independently reviewing bug risks, structural conventions, and test coverage gaps.
+- **Strict Hallucination Guardrail (Critic Agent)**: Automated verification step that drops any agent claim that cannot be grounded directly in the retrieved codebase or PR diff.
+- **Live GitHub Webhook Integration**: FastAPI event listener to post automated review comments directly on live PRs.
+- **Golden Evaluation Suite**: Benchmark pipeline using Ragas against historical human-reviewed PRs.
+- **LLMOps & Observability**: End-to-end execution tracing, prompt versioning, and cost tracking via Langfuse / LangSmith.
 
 ---
 
 ## 🏗️ Architecture & Multi-Agent Workflow
 
-CodeSentry's core workflow is modeled as a stateful, directed graph orchestrated by **LangGraph**.
+The system architecture is structured as a stateful graph orchestrated by **LangGraph**:
 
 ```
                            +-------------------+
@@ -62,16 +64,6 @@ CodeSentry's core workflow is modeled as a stateful, directed graph orchestrated
                            +-------------------+
 ```
 
-### Agent Roles
-
-1. **Ingestion Agent**: Clones the target repo, extracts syntax trees via Tree-Sitter, chunks code cleanly along AST boundaries, and embeds vectors into `pgvector`. It also ingests closed PR discussions and commit history.
-2. **Router Agent**: Analyzes incoming PR diffs to classify scope and dynamically dispatch tasks to specialist agents (e.g., bug risk analysis, style/convention checking, architecture review, test coverage gaps).
-3. **Retrieval Agent**: Performs hybrid RAG (dense vector similarity + keyword search) over both the codebase vectors and the team's historical review comment database.
-4. **Bug-Risk Specialist**: Performs static-pattern recognition combined with LLM reasoning over the diff against retrieved similar implementations.
-5. **Convention Specialist**: Verifies new changes against established project idioms (naming conventions, error handling strategies, modular structure).
-6. **Critic / Verifier Agent**: Acts as an automated hallucination guardrail. Every claim made by specialist agents must explicitly reference a valid line in the retrieved context or diff; unverified claims are filtered out.
-7. **Review Writer Agent**: Synthesizes verified feedback into a clean, markdown-formatted PR comment and posts it directly back to GitHub via API.
-
 ---
 
 ## 🛠️ Tech Stack
@@ -86,17 +78,27 @@ CodeSentry's core workflow is modeled as a stateful, directed graph orchestrated
 
 ---
 
-## 🚀 Getting Started
+## 🗺️ Development Roadmap
+
+- [x] **Phase 1: Ingestion Pipeline** — GitHub API ingestion, AST-aware chunking, vector embedding into `pgvector`.
+- [x] **Phase 2: Baseline Retrieval Agent** — Single-agent RAG setup to sanity check retrieval quality over code diffs.
+- [ ] **Phase 3: Multi-Agent Graph** — Full LangGraph implementation with Router, Specialist (Bug-Risk, Convention, Test-Gap), and Critic agents.
+- [ ] **Phase 4: Golden Eval Suite** — Curating ~50 historical PRs and scoring agent performance via Ragas (precision/recall on bug-flags).
+- [ ] **Phase 5: Webhooks & Observability** — FastAPI event handler for live GitHub comments and Langfuse tracing.
+- [ ] **Phase 6: Deployment & Polish** — Docker containerization, performance tuning, and demo showcase.
+
+---
+
+## 🚀 Local Setup (Development)
 
 ### Prerequisites
 
 - Python 3.10+
 - PostgreSQL with `pgvector` extension enabled
-- Docker & Docker Compose (optional)
-- GitHub Personal Access Token (or GitHub App credentials)
-- OpenAI / Anthropic API Key / Groq 
+- OpenAI / Anthropic API Key
+- GitHub Personal Access Token
 
-### Installation
+### Environment Configuration
 
 1. **Clone the repository**:
    ```bash
@@ -112,7 +114,7 @@ CodeSentry's core workflow is modeled as a stateful, directed graph orchestrated
    ```
 
 3. **Configure Environment Variables**:
-   Copy `.env.example` to `.env` and fill in your keys:
+   Copy `.env.example` to `.env` and set your key values:
    ```bash
    cp .env.example .env
    ```
@@ -126,12 +128,4 @@ CodeSentry's core workflow is modeled as a stateful, directed graph orchestrated
    LANGFUSE_HOST=https://cloud.langfuse.com
    ```
 
-4. **Initialize Database**:
-   ```bash
-   python db.py
-   ```
-
-5. **Run FastAPI Webhook Server**:
-   ```bash
-   uvicorn main:app --reload --port 8000
-   ```
+---
