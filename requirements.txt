@@ -1,0 +1,21 @@
+# Day 1 - ingestion
+requests
+python-dotenv
+tree-sitter
+tree-sitter-python
+tree-sitter-javascript
+tree-sitter-typescript
+tree-sitter-go
+tree-sitter-java
+tree-sitter-rust
+tree-sitter-ruby
+tree-sitter-c
+tree-sitter-cpp
+
+# Day 2 - embeddings + pgvector + retrieval + API
+psycopg2-binary
+sentence-transformers
+groq
+fastapi
+uvicorn[standard]
+pydantic
