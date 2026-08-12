@@ -105,18 +105,34 @@ class GitHubClient:
             url, params={"state": "closed", "sort": "updated", "direction": "desc"},
             max_pages=max_pages,
         )
-        return [
-            {
+
+        BOT_LOGINS = {"dependabot[bot]", "renovate[bot]", "github-actions[bot]", "pre-commit-ci[bot]"}
+        BOT_TITLE_PREFIXES = ("bump ", "⬆", "chore(deps)", "build(deps)", "update dependency")
+
+        results = []
+        for pr in raw:
+            if not pr.get("merged_at"):
+                continue  # only merged PRs are useful precedent
+
+            author = (pr.get("user") or {}).get("login", "")
+            title = pr.get("title", "")
+
+            if author in BOT_LOGINS:
+                continue
+            if title.lower().startswith(BOT_TITLE_PREFIXES):
+                continue  # catches bot PRs opened under a human's account too
+
+            results.append({
                 "number": pr["number"],
-                "title": pr["title"],
+                "title": title,
                 "body": pr.get("body") or "",
+                "author": author,
                 "merged_at": pr.get("merged_at"),
                 "base_sha": pr["base"]["sha"],
                 "head_sha": pr["head"]["sha"],
-            }
-            for pr in raw
-            if pr.get("merged_at")  # only merged PRs are useful precedent
-        ]
+            })
+
+        return results
 
     def get_pr_review_comments(self, pr_number: int) -> list[dict]:
         """Line-level review comments on a specific PR (the actual review feedback)."""
@@ -131,6 +147,27 @@ class GitHubClient:
                 "diff_hunk": c.get("diff_hunk"),
             }
             for c in raw
+        ]
+
+    def get_pr_reviews(self, pr_number: int) -> list[dict]:
+        """
+        Top-level PR reviews (approve/request-changes/comment), each with an
+        optional summary body. Distinct from get_pr_review_comments(), which
+        is line-level. On repos where maintainers approve quickly without
+        inline comments, the substantive feedback often lives here instead —
+        e.g. "LGTM, one nit: consider renaming this" attached to the review
+        itself rather than a specific line.
+        """
+        url = f"{GITHUB_API_BASE}/repos/{self.owner}/{self.repo}/pulls/{pr_number}/reviews"
+        raw = self._paginate(url, max_pages=3)
+        return [
+            {
+                "state": r.get("state"),  # APPROVED / CHANGES_REQUESTED / COMMENTED
+                "body": r.get("body") or "",
+                "author": r["user"]["login"] if r.get("user") else None,
+            }
+            for r in raw
+            if (r.get("body") or "").strip()  # skip empty-body approvals, no signal there
         ]
 
     def get_pr_diff(self, pr_number: int) -> str:
