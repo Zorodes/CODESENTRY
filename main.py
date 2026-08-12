@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, field_validator
 
 import db
-import retrieve_agent
+from graph import compiled_graph
 
 app = FastAPI(
     title="CodeSentry",
@@ -103,7 +103,13 @@ def post_review(request: ReviewRequest) -> ReviewResponse:
         ) from exc
 
     try:
-        result = retrieve_agent.review_diff(request.diff)
+        state_input = {"diff": request.diff}
+        final_state = compiled_graph.invoke(state_input)
+        result = {
+            "review": final_state.get("final_review", ""),
+            "code_chunks_retrieved": final_state.get("code_chunks", []),
+            "precedents_retrieved": final_state.get("precedents", [])
+        }
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
