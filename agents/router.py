@@ -21,3 +21,4 @@ Diff:
     
     result = structured_llm.invoke(prompt)
     return {"category": result.category}
+#this is a tradeoff the router isnt on the function rn changed back to using all three agents
