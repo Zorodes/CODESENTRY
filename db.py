@@ -245,20 +245,23 @@ def get_table_counts() -> dict[str, int]:
 # ---------------------------------------------------------------------------
 
 def _rrf_merge(
-    vector_rows: list[tuple],   # (id, ...) ordered by vector similarity
-    fts_rows: list[tuple],      # (id, ...) ordered by ts_rank
+    vector_rows: list[dict],
+    fts_rows: list[dict],
     top_k: int,
-    vector_rows_full: list[dict],
 ) -> list[dict]:
     """
     Reciprocal Rank Fusion.
 
-    Both lists are already ranked (index 0 = best match).
-    The id is always the first element of the tuples.
-    Returns up to top_k rows from vector_rows_full, sorted by merged RRF score.
+    Both lists are already ranked (index 0 = best match) and should contain the
+    full row data necessary to return a merged result set without dropping any
+    FTS-only matches.
     """
-    vector_rank: dict[int, int] = {row[0]: rank + 1 for rank, row in enumerate(vector_rows)}
-    fts_rank: dict[int, int]    = {row[0]: rank + 1 for rank, row in enumerate(fts_rows)}
+    vector_rank: dict[int, int] = {
+        row["id"]: rank + 1 for rank, row in enumerate(vector_rows)
+    }
+    fts_rank: dict[int, int] = {
+        row["id"]: rank + 1 for rank, row in enumerate(fts_rows)
+    }
 
     all_ids = set(vector_rank) | set(fts_rank)
     rrf_scores: dict[int, float] = {}
@@ -270,15 +273,11 @@ def _rrf_merge(
             score += 1.0 / (RRF_K + fts_rank[doc_id])
         rrf_scores[doc_id] = score
 
-    # Build an id -> full row lookup from the vector result set (has all columns).
-    row_lookup: dict[int, dict] = {row["id"]: row for row in vector_rows_full}
-
-    # Include any FTS-only rows that are not in the vector result set.
-    # For those we don't have the full row readily available, so we query them
-    # individually only if needed (rare case - kept simple here).
-    fts_only_ids = set(fts_rank) - set(vector_rank)
-    # fts_only rows are excluded here because they won't have an embedding;
-    # the vector arm covers the vast majority of relevant results.
+    row_lookup: dict[int, dict] = {}
+    for row in vector_rows:
+        row_lookup[row["id"]] = row
+    for row in fts_rows:
+        row_lookup.setdefault(row["id"], row)
 
     ranked_ids = sorted(rrf_scores.keys(), key=lambda i: rrf_scores[i], reverse=True)
     result = []
@@ -325,7 +324,9 @@ def hybrid_search_code(
             # --- FTS arm (plainto_tsquery handles arbitrary text safely) ---
             cur.execute(
                 """
-                SELECT id, ts_rank(fts, plainto_tsquery('english', %s)) AS rank
+                SELECT id, file_path, language, chunk_type, name,
+                       start_line, end_line, code,
+                       ts_rank(fts, plainto_tsquery('english', %s)) AS rank
                 FROM   code_chunks
                 WHERE  fts @@ plainto_tsquery('english', %s)
                 ORDER  BY rank DESC
@@ -338,15 +339,10 @@ def hybrid_search_code(
     finally:
         put_conn(conn)
 
-    # Convert RealDictRow to plain dicts so we can mutate them.
     vector_rows = [dict(r) for r in vector_rows]
     fts_rows    = [dict(r) for r in fts_rows]
 
-    # Build lightweight (id, ...) tuples for rank extraction.
-    vec_ids  = [(r["id"],) for r in vector_rows]
-    fts_ids  = [(r["id"],) for r in fts_rows]
-
-    merged = _rrf_merge(vec_ids, fts_ids, top_k, vector_rows)
+    merged = _rrf_merge(vector_rows, fts_rows, top_k)
 
     # Annotate with rrf position.
     for rank, row in enumerate(merged, 1):
@@ -388,7 +384,9 @@ def hybrid_search_precedents(
             # --- FTS arm (plainto_tsquery handles arbitrary text safely) ---
             cur.execute(
                 """
-                SELECT id, ts_rank(fts, plainto_tsquery('english', %s)) AS rank
+                SELECT id, pr_number, pr_title, file_path,
+                       diff_hunk, comment_body,
+                       ts_rank(fts, plainto_tsquery('english', %s)) AS rank
                 FROM   pr_precedents
                 WHERE  fts @@ plainto_tsquery('english', %s)
                 ORDER  BY rank DESC
@@ -404,10 +402,7 @@ def hybrid_search_precedents(
     vector_rows = [dict(r) for r in vector_rows]
     fts_rows    = [dict(r) for r in fts_rows]
 
-    vec_ids = [(r["id"],) for r in vector_rows]
-    fts_ids = [(r["id"],) for r in fts_rows]
-
-    merged = _rrf_merge(vec_ids, fts_ids, top_k, vector_rows)
+    merged = _rrf_merge(vector_rows, fts_rows, top_k)
 
     for rank, row in enumerate(merged, 1):
         row["rrf_rank"] = rank
