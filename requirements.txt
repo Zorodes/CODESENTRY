@@ -15,7 +15,7 @@ tree-sitter-cpp
 # Day 2 - embeddings + pgvector + retrieval + API
 psycopg2-binary
 sentence-transformers
-groq
+langchain-google-genai
 fastapi
 uvicorn[standard]
 pydantic

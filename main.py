@@ -20,11 +20,12 @@ from pydantic import BaseModel, field_validator
 
 import db
 from graph import compiled_graph
+from observability import get_langfuse_callback
 
 app = FastAPI(
     title="CodeSentry",
-    description="Multi-agent PR review system powered by pgvector + Groq.",
-    version="0.2.0",
+    description="Multi-agent PR review system powered by pgvector + Gemini.",
+    version="0.3.0",
 )
 
 
@@ -87,7 +88,7 @@ class IndexStatusResponse(BaseModel):
 @app.post("/review", response_model=ReviewResponse)
 def post_review(request: ReviewRequest) -> ReviewResponse:
     """
-    Embed the diff, run hybrid retrieval, call Groq, return the review.
+    Embed the diff, run hybrid retrieval, call Gemini, return the review.
     """
     # Validate diff (also caught by Pydantic, but explicit error is clearer).
     if not request.diff.strip():
@@ -104,7 +105,15 @@ def post_review(request: ReviewRequest) -> ReviewResponse:
 
     try:
         state_input = {"diff": request.diff}
-        final_state = compiled_graph.invoke(state_input)
+
+        config = {}
+        handler = get_langfuse_callback()
+        if handler:
+            config["callbacks"] = [handler]
+            config["run_name"] = "api_review"
+            config["tags"] = ["api"]
+
+        final_state = compiled_graph.invoke(state_input, config=config)
         result = {
             "review": final_state.get("final_review", ""),
             "code_chunks_retrieved": final_state.get("code_chunks", []),
