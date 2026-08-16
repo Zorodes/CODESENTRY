@@ -23,10 +23,11 @@ Three metrics:
 
 import re
 from pydantic import BaseModel
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
+from llm_utils import invoke_structured_llm
 
-JUDGE_MODEL = "llama-3.3-70b-versatile"
-CITATION_PATTERN = re.compile(r"\[(code|precedent):(\d+)\]")
+JUDGE_MODEL = "models/gemini-3.5-flash"
+CITATION_PATTERN = re.compile(r"\[?(code|precedent):(\d+)\]?")
 
 
 class MatchJudgment(BaseModel):
@@ -38,7 +39,7 @@ class GroundingJudgment(BaseModel):
 
 
 def _get_judge_llm():
-    return ChatGroq(model=JUDGE_MODEL, temperature=0.0)
+    return ChatGoogleGenerativeAI(model=JUDGE_MODEL, temperature=0.0)
 
 
 def finding_matches_expected(finding_description: str, expected_description: str) -> bool:
@@ -54,7 +55,7 @@ Comment A: {finding_description}
 Comment B: {expected_description}
 
 Do they describe the same issue?"""
-    result = structured.invoke(prompt)
+    result = invoke_structured_llm(structured, prompt)
     return result.matches
 
 
@@ -116,9 +117,10 @@ def check_citation_exists(finding, code_chunks: list[dict], precedents: list[dic
     precedent_ids = {str(p.get("id")) for p in precedents}
 
     for cid_str in finding.source_chunk_ids:
-        if cid_str == "[diff]":
+        s = str(cid_str).strip()
+        if s.lower() in ("[diff]", "diff"):
             continue  # diff is always in context, always a valid citation target
-        match = CITATION_PATTERN.search(cid_str)
+        match = CITATION_PATTERN.search(s)
         if not match:
             return False  # unparseable citation format
         kind, cid = match.groups()

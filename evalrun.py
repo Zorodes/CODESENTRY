@@ -1,8 +1,8 @@
 """
-Day 4 entry point.
+Day 4/5 entry point.
 
 Usage:
-    python run_eval.py [--limit N]
+    python evalrun.py [--limit N]
 
 Runs the golden set through the pipeline, computes finding-level
 precision/recall, citation validity rate, and hallucination survival rate, prints
@@ -11,11 +11,15 @@ eval_results/run_<timestamp>.json so you can track trends across prompt
 changes over time.
 
 --limit N: only run the first N golden examples (useful for a quick smoke
-test before committing to a full run — each example costs several LLM calls).
+test before committing to a full run -- each example costs several LLM calls).
+
+Day 5 additions: Langfuse tracing (each eval run gets a session_id for
+grouping in the UI) and wall-clock timing (total + per-example average).
 """
 
 import sys
 import json
+import time
 from pathlib import Path
 from datetime import datetime
 
@@ -86,9 +90,9 @@ def score_results(results: list[dict]) -> dict:
     }
 
 
-def print_report(scores: dict, timestamp: str):
+def print_report(scores: dict, timestamp: str, wall_clock_s: float = None):
     print("=" * 60)
-    print(f"CodeSentry Eval Run — {timestamp}")
+    print(f"CodeSentry Eval Run -- {timestamp}")
     print("=" * 60)
     print(f"Golden set: {scores['n_examples']} examples\n")
 
@@ -102,6 +106,13 @@ def print_report(scores: dict, timestamp: str):
               f"({scores['hallucination_checked_count']} adversarial example(s) checked)")
     else:
         print("  hallucination_rate:   N/A (no examples with known_fabricated_claims)")
+
+    if wall_clock_s is not None:
+        n = scores["n_examples"] or 1
+        avg_latency = wall_clock_s / n
+        print(f"\nTiming:")
+        print(f"  total_wall_clock:     {wall_clock_s:.1f}s")
+        print(f"  avg_latency/example:  {avg_latency:.1f}s")
 
     if scores["worst_category"]:
         cat, recall = scores["worst_category"]
@@ -125,11 +136,19 @@ def main():
         limit = int(sys.argv[idx + 1])
 
     golden_set = load_golden_set()
-    results = run_harness(golden_set, limit=limit)
-    scores = score_results(results)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    print_report(scores, timestamp)
+    session_id = f"eval_{timestamp}"
+
+    t_start = time.time()
+    results = run_harness(golden_set, limit=limit, session_id=session_id)
+    wall_clock_s = time.time() - t_start
+
+    scores = score_results(results)
+    scores["wall_clock_s"] = round(wall_clock_s, 2)
+    scores["avg_latency_s"] = round(wall_clock_s / (len(results) or 1), 2)
+
+    print_report(scores, timestamp, wall_clock_s=wall_clock_s)
 
     out_path = RESULTS_DIR / f"run_{timestamp}.json"
     out_path.write_text(json.dumps(scores, indent=2, default=str))

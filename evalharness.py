@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 from graph import compiled_graph
+from observability import get_langfuse_callback
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -22,11 +23,20 @@ def load_golden_set() -> list[dict]:
     return json.loads(path.read_text())
 
 
-def run_example(example: dict) -> dict:
+def run_example(example: dict, session_id: str = None) -> dict:
     """Runs one golden example through the graph, returns example + actual result."""
     state = {"diff": example["diff"]}
+
+    config = {}
+    handler = get_langfuse_callback()
+    if handler:
+        config["callbacks"] = [handler]
+        config["run_name"] = f"eval:{example.get('source', 'unknown')}"
+        config["tags"] = ["eval"]
+        config["metadata"] = {"session_id": session_id or "eval"}
+
     try:
-        result = compiled_graph.invoke(state)
+        result = compiled_graph.invoke(state, config=config)
         error = None
     except Exception as e:
         result = {"verified_findings": [], "code_chunks": [], "precedents": [], "final_review": ""}
@@ -43,14 +53,15 @@ def run_example(example: dict) -> dict:
     }
 
 
-def run_harness(golden_set: list[dict] = None, limit: int = None) -> list[dict]:
+def run_harness(golden_set: list[dict] = None, limit: int = None,
+               session_id: str = None) -> list[dict]:
     """
     Runs the full (or a subset of the) golden set through the pipeline.
 
-    limit: if set, only runs the first N examples — use this to smoke-test
+    limit: if set, only runs the first N examples -- use this to smoke-test
     before committing to a full run, since each example costs several LLM
     calls (specialists + critic + writer) and a full 40-50 example set adds
-    up in both time and Groq usage.
+    up in both time and Gemini usage.
     """
     if golden_set is None:
         golden_set = load_golden_set()
@@ -60,7 +71,7 @@ def run_harness(golden_set: list[dict] = None, limit: int = None) -> list[dict]:
     results = []
     for i, example in enumerate(golden_set, 1):
         print(f"Running example {i}/{len(golden_set)}: {example['source']}")
-        result = run_example(example)
+        result = run_example(example, session_id=session_id)
         if result["error"]:
             print(f"  ERROR: {result['error']}")
         results.append(result)
