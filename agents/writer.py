@@ -1,9 +1,10 @@
 import json
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from graph_state import ReviewState
+from llm_utils import invoke_llm
 
 def writer_node(state: ReviewState) -> dict:
-    llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.1)
+    llm = ChatGoogleGenerativeAI(model="models/gemini-3.5-flash", temperature=0.1)
     
     verified_findings = state.get("verified_findings", [])
     
@@ -34,5 +35,5 @@ If a section has no matching findings in the JSON, write "No findings in this ca
 under that heading and nothing else.
 """
     
-    result = llm.invoke(prompt)
+    result = invoke_llm(llm, prompt)
     return {"final_review": result.content}

@@ -1,15 +1,16 @@
 from pydantic import BaseModel
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from graph_state import ReviewState, Finding
 from agents.utils import build_code_context, build_precedent_context
+from llm_utils import invoke_llm
 
 class ConventionOutput(BaseModel):
     findings: list[Finding]
 
 def convention_node(state: ReviewState) -> dict:
-    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.1)
+    llm = ChatGoogleGenerativeAI(model="models/gemini-3.5-flash", temperature=0.1)
     structured_llm = llm.with_structured_output(ConventionOutput)
-    
+
     code_ctx = build_code_context(state.get("code_chunks", []))
     precedent_ctx = build_precedent_context(state.get("precedents", []))
     
@@ -39,5 +40,5 @@ Rules:
   comparable in the retrieved context — do not manufacture a finding just to have
   output.
 """
-    result = structured_llm.invoke(prompt)
+    result = invoke_llm(structured_llm, prompt)
     return {"convention_findings": result.findings}
